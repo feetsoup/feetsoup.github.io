@@ -1,0 +1,10 @@
+:root {
+    --width : 700px
+}
+
+.page {display: flex; flex-direction: column; align-items: center}
+
+
+.menu {width: var(--width); display : flex; flex-direction: row; gap : 5vw; align-items: center;}
+.menu > li {list-style : none;}
+.menu > .spacer {flex-grow: 1;}
