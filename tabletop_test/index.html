@@ -29,9 +29,13 @@ label{display:block;margin-top:10px;font-size:13px;color:var(--mute)}
 textarea,select,input[type=number]{width:100%;background:var(--inp);border:1px solid var(--line);border-radius:6px;padding:6px}
 input[type=number]{width:64px}
 .sw{width:26px;height:26px;padding:0;border-radius:50%}
-#log{margin:8px 0 0;padding:0;list-style:none}
-#log li{padding:4px 0;border-bottom:1px solid var(--line)}
-#log li:first-child{color:var(--acc);font-weight:600}
+#log{margin:0;padding:0;list-style:none}
+#log li{padding:3px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+#log li:last-child{border-bottom:none}
+#log time{color:var(--mute);font-size:11px;margin-right:6px}
+#log b{font-weight:600}
+#log .k-res span{color:var(--acc)}
+#log .k-sys{color:var(--mute);font-style:italic}
 #insp{display:none;margin-top:14px;padding-top:6px;border-top:1px solid var(--line)}
 #stage{flex:1;position:relative;overflow:hidden;touch-action:none;cursor:grab;background-color:var(--felt);background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px)}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
@@ -191,13 +195,20 @@ summary{cursor:pointer;font-weight:600}
 .tb .pk.w.dn{background:#e3b14b}
 .tb .pk.b.dn{background:#8a6a1f}
 .tb .ped.on,.tb .pl.on{background:var(--acc);color:var(--onacc);border-color:var(--acc)}
-#results{position:absolute;right:12px;bottom:10px;width:230px;max-width:55%;background:rgba(23,34,33,.85);border:1px solid var(--line);border-radius:8px;z-index:5;font-size:13px}
+#results{position:absolute;right:12px;bottom:10px;width:290px;max-width:calc(100% - 24px);background:rgba(23,34,33,.85);border:1px solid var(--line);border-radius:8px;z-index:5;font-size:13px}
 #rtoggle{display:flex;gap:8px;align-items:center;width:100%;background:none;border:none;padding:5px 10px;text-align:left}
 #rtoggle span:nth-child(2){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--acc);font-size:12px}
 #results:not(.c) #rlast{display:none}
 #results.c #rtoggle span:last-child{display:inline-block;transform:rotate(-90deg)}
-#results ul{margin:0;padding:0 10px 6px;list-style:none;max-height:130px;overflow:auto;border-top:1px solid var(--line)}
-#results.c ul{display:none}
+#results ul{margin:0;padding:4px 10px;list-style:none;max-height:180px;overflow:auto;border-top:1px solid var(--line)}
+#results.c #rbody{display:none}
+#runread{background:var(--acc);color:var(--onacc);border-radius:9px;padding:0 6px;font-size:11px}
+#lfoot{display:flex;gap:6px;padding:6px 10px;border-top:1px solid var(--line)}
+#chatf{display:flex;gap:6px;flex:1;min-width:0}
+#chatf[hidden]{display:none}
+#chat{flex:1;min-width:0}
+#lfoot button{padding:3px 8px}
+#lclear{margin-left:auto}
 #nav,#rail,#panel,#results{zoom:var(--ui,1)}
 .widget{background:var(--panel)!important;color:var(--ink)!important}
 .itmt{background:var(--btn)!important;color:var(--ink)!important}
@@ -361,7 +372,7 @@ body.g-noplay #world .widget .wb{pointer-events:none}
    <div id="insi" hidden><div class="mute">Selected image</div><label>Shortcut to canvas<select id="iml"></select></label><div class="row"><button id="idl">Delete image</button></div></div>
   </section>
  </div>
- <div id="stage"><div id="world"></div><div id="cursors" aria-hidden="true"></div><div id="results"><button id="rtoggle" aria-expanded="true"><span>Results</span><span id="rlast"></span><span aria-hidden="true">▾</span></button><ul id="log"></ul></div><div id="toast" role="status" aria-live="polite"></div><div id="hint">In Play mode, click shortcut and function tiles to use them.</div></div>
+ <div id="stage"><div id="world"></div><div id="cursors" aria-hidden="true"></div><div id="results"><button id="rtoggle" aria-expanded="true"><span>Log</span><span id="rlast"></span><b id="runread" hidden></b><span aria-hidden="true">▾</span></button><div id="rbody"><ul id="log" aria-live="polite"></ul><div id="lfoot"><form id="chatf" hidden><input id="chat" maxlength="300" placeholder="Message everyone…" aria-label="Chat message" autocomplete="off"><button>Send</button></form><button id="lclear" title="Clear the log on this computer">Clear</button></div></div></div><div id="toast" role="status" aria-live="polite"></div><div id="hint">In Play mode, click shortcut and function tiles to use them.</div></div>
 </div>
 <script>
 const $=s=>document.querySelector(s),uid=()=>Math.random().toString(36).slice(2,8);
@@ -472,9 +483,22 @@ document.querySelectorAll('#rail button').forEach(b=>b.onclick=()=>{
  $('#panel').classList.toggle('hide',same);
  document.querySelectorAll('#panel section').forEach(s=>s.classList.toggle('on',s.id==='p-'+b.dataset.p));
 });
-const showLog=m=>{const li=document.createElement('li');li.textContent=m;const u=$('#log');u.prepend(li);while(u.children.length>8)u.lastChild.remove();const rl=$('#rlast');if(rl)rl.textContent=m};
-/* Results made here are also shared with everyone in a multiplayer game; ones from others arrive through showLog */
-const log=m=>{showLog(m);if(window.twNet)try{twNet.logged(m)}catch(e){}};
+/* ---- Log: results and chat, oldest first, kept on this computer ----
+   An entry is {id, k: 'res' | 'chat' | 'sys', m: text, who: name, col: name color, ts: time} */
+const LOGMAX=200;let LOG=[],unread=0;
+try{const l=JSON.parse(localStorage.getItem('tw-log'));if(Array.isArray(l))LOG=l.filter(e=>e&&typeof e.m==='string').slice(-LOGMAX)}catch(e){}
+const logLine=e=>(e.who?e.who+': ':'')+e.m;
+function logRow(e){const u=$('#log'),near=u.scrollHeight-u.scrollTop-u.clientHeight<30,li=document.createElement('li');li.className='k-'+e.k;
+ const t=document.createElement('time'),d=new Date(e.ts);t.textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');t.title=d.toLocaleString();li.appendChild(t);
+ if(e.who){const b=document.createElement('b');b.textContent=e.who;if(e.col)b.style.color=e.col;li.append(b,': ')}
+ const s=document.createElement('span');s.textContent=e.m;li.appendChild(s);u.appendChild(li);
+ while(u.children.length>LOGMAX)u.firstChild.remove();if(near)u.scrollTop=u.scrollHeight;$('#rlast').textContent=logLine(e)}
+function logAdd(e){if(e.id&&LOG.some(x=>x.id===e.id))return null;
+ e={id:e.id||uid()+uid(),k:['res','chat','sys'].includes(e.k)?e.k:'res',m:String(e.m),who:e.who||'',col:e.col||'',ts:e.ts||Date.now()};
+ LOG.push(e);if(LOG.length>LOGMAX)LOG.splice(0,LOG.length-LOGMAX);try{localStorage.setItem('tw-log',JSON.stringify(LOG))}catch(x){}
+ logRow(e);if($('#results').classList.contains('c')&&e.k!=='sys'){unread++;$('#runread').textContent=unread;$('#runread').hidden=false}return e}
+/* Results made here are also shared with everyone in a multiplayer game */
+const log=m=>{const e=logAdd({k:'res',m,...(window.twNet&&twNet.who?twNet.who():{})});if(e&&window.twNet)try{twNet.logged(e)}catch(x){}};
 $('#coin').onclick=()=>{const h=Math.random()<.5;flipCoin($('#pcoin'),h,true);log('Coin: '+(h?'Heads':'Tails'))};
 /* ---- Players ---- */
 S.players=S.players||[];
@@ -705,7 +729,7 @@ function showOnTable(spec){
  const v=cv().view,r=stage.getBoundingClientRect(),n=items.filter(i=>i.type==='pcard'||i.type==='tool').length*20;
  const sc=((S.players.find(p=>p.id===spec.pid)||{stats:[]}).stats||[]).length;
  const dm=spec.type==='pcard'?{w:200,h:Math.max(100,Math.ceil((100+28*sc)/10)*10)}:TL[spec.tool]?{w:TL[spec.tool].w,h:TL[spec.tool].h}:spec.tool==='dice'?{w:250,h:270}:{w:170,h:230};
- const it={id:uid(),color:'#162120',...spec,...dm,...(spec.type==='tool'?{name:newName(spec.tool),st:(TL[spec.tool]&&!TL[spec.tool].shared)?TL[spec.tool].init():undefined}:{}),x:Math.round(((r.width/2-v.x)/v.z-dm.w/2+n)/10)*10,y:Math.round(((r.height/2-v.y)/v.z-dm.h/2+n)/10)*10};
+ const it={id:uid(),color:'#162120',...spec,...dm,...(spec.type==='tool'?{name:newName(spec.tool),st:(TL[spec.tool]&&!TL[spec.tool].shared)?(TL[spec.tool].copy&&S.tools&&S.tools[spec.tool]?JSON.parse(JSON.stringify(S.tools[spec.tool])):TL[spec.tool].init()):undefined}:{}),x:Math.round(((r.width/2-v.x)/v.z-dm.w/2+n)/10)*10,y:Math.round(((r.height/2-v.y)/v.z-dm.h/2+n)/10)*10};
  items.push(it);save();renderWorld();select(it.id);
 }
 document.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>showOnTable({type:'tool',tool:b.dataset.show}));
@@ -836,7 +860,8 @@ TL.music={title:'Music player',w:260,h:250,init:()=>({vol:.7}),
  }};
 
 /* Notepad */
-TL.notes={title:'Notepad',w:260,h:240,init:()=>({t:''}),
+/* The menu notepad is your own; one shown on the table starts as a copy of it */
+TL.notes={title:'Notepad',w:260,h:240,copy:true,init:()=>({t:''}),
  build(b,st,mode){
   b.innerHTML='<textarea aria-label="Notes" placeholder="Notes…"></textarea>';
   const ta=b.querySelector('textarea');if(mode==='table')ta.style.height='100%';else ta.rows=6;
@@ -1727,8 +1752,12 @@ $('#lyes').onclick=()=>{const p=pendingAll;pendingAll=null;$('#lconf').hidden=tr
 $('#lno').onclick=()=>{pendingAll=null;$('#lconf').hidden=true};
 /* ---- Results box ---- */
 {const box=$('#results'),bt=$('#rtoggle');let c=false;try{c=localStorage.getItem('tw-res')==='c'}catch(e){}
- const set=v=>{c=v;box.classList.toggle('c',c);bt.setAttribute('aria-expanded',String(!c));try{localStorage.setItem('tw-res',c?'c':'o')}catch(e){}};
- bt.onclick=()=>set(!c);set(c)}
+ const set=v=>{c=v;box.classList.toggle('c',c);bt.setAttribute('aria-expanded',String(!c));try{localStorage.setItem('tw-res',c?'c':'o')}catch(e){}
+  if(!c){unread=0;$('#runread').hidden=true;const u=$('#log');u.scrollTop=u.scrollHeight}};
+ bt.onclick=()=>set(!c);set(c);
+ LOG.forEach(logRow);
+ $('#lclear').onclick=()=>{LOG=[];try{localStorage.removeItem('tw-log')}catch(e){}$('#log').innerHTML='';$('#rlast').textContent=''};
+ $('#chatf').onsubmit=e=>{e.preventDefault();const f=$('#chat');if(window.twNet&&twNet.chat(f.value))f.value=''}}
 /* ---- Options ---- */
 const OPT={mute:false,scheme:'teal',scale:1};
 try{Object.assign(OPT,JSON.parse(localStorage.getItem('tw-opt'))||{})}catch(e){}
@@ -1753,6 +1782,12 @@ try{renderNav()}catch(e){console.error(e)}try{renderWorld()}catch(e){console.err
    Uses PeerJS (WebRTC) with its free public broker. Guests connect only to the host, and the host relays. ---- */
 {
 const PEERJS='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',PFX='tabletop-workshop-',ABC='ABCDEFGHJKMNPQRSTUVWXYZ23456789',MAXG=12,IDLE=20000;
+/* Relay (TURN) servers, for players whose networks can't connect to each other directly.
+   PeerJS's built-in relay is often down, so fill in ONE of these to use your own:
+   TURN_KEY_URL: a Metered credentials link, like 'https://YOURAPP.metered.live/api/v1/turn/credentials?apiKey=YOURKEY'
+   TURN: a list of servers, like [{urls:'turn:example.com:3478',username:'name',credential:'password'}] */
+const TURN_KEY_URL='',TURN=[];
+const STUN=[{urls:['stun:stun.l.google.com:19302','stun:stun.cloudflare.com:3478']}];
 const CCOL=['#e3b14b','#d9694f','#6fa8a0','#7d8fd1','#c27bd1','#5fbf6a','#e07aa6','#4fb3d9'];
 const NET={role:null,stage:'',run:0,peer:null,conn:null,code:'',myId:'',tok:'',retry:0,back:{},ask:true,follow:true,guests:new Map(),roster:[]};
 /* This tab's game, kept across reloads: g = the game I joined {code,tok}, h = the game I host {code,back} */
@@ -1769,20 +1804,23 @@ const broadcast=(m,skip)=>NET.guests.forEach((g,id)=>{if(g.ok&&id!==skip)send(g.
 
 /* Profile: name and color, remembered on this computer */
 {let P={};try{P=JSON.parse(localStorage.getItem('tw-net'))||{}}catch(e){}
- $('#snm').value=clean(P.name,24);$('#scol').value=/^#[0-9a-f]{6}$/i.test(P.color||'')?P.color:CCOL[Math.floor(Math.random()*CCOL.length)];}
-const saveProfile=()=>{try{localStorage.setItem('tw-net',JSON.stringify({name:clean($('#snm').value,24),color:$('#scol').value}))}catch(e){}};
+ NET.hfol=P.hfol!==false;$('#snm').value=clean(P.name,24);$('#scol').value=/^#[0-9a-f]{6}$/i.test(P.color||'')?P.color:CCOL[Math.floor(Math.random()*CCOL.length)];}
+const saveProfile=()=>{try{localStorage.setItem('tw-net',JSON.stringify({name:clean($('#snm').value,24),color:$('#scol').value,hfol:NET.hfol}))}catch(e){}};
 $('#snm').oninput=$('#scol').oninput=saveProfile;saveProfile();
 const myName=()=>clean($('#snm').value,24)||(NET.role==='host'?'Host':'Guest');
 const me=()=>{const c=cv();return{id:NET.myId,name:myName(),color:okCol($('#scol').value),c:c.id,n:clean(c.name,60),host:NET.role==='host'}};
 
 /* The library loads only when someone hosts or joins, so the app still works offline */
-let lib=null;
-function loadLib(){if(window.Peer)return Promise.resolve();
- return lib||(lib=new Promise((res,rej)=>{const s=document.createElement('script');s.src=PEERJS;s.onload=()=>window.Peer?res():rej();s.onerror=()=>{s.remove();lib=null;rej()};document.head.appendChild(s)}))}
-function mkPeer(id){const p=id?new Peer(id,{debug:0}):new Peer({debug:0});
+let lib=null,ICE=null;
+function loadLib(){return Promise.all([window.Peer||lib||(lib=new Promise((res,rej)=>{const s=document.createElement('script');s.src=PEERJS;s.onload=()=>window.Peer?res():rej();s.onerror=()=>{s.remove();lib=null;rej()};document.head.appendChild(s)})),getIce()])}
+/* Without relay servers of our own, PeerJS's defaults are used. A failed credentials fetch is tried again next time. */
+async function getIce(){if(ICE)return;let t=TURN;
+ if(TURN_KEY_URL)try{const r=await fetch(TURN_KEY_URL),j=r.ok&&await r.json();if(Array.isArray(j)&&j.length)t=j}catch(e){}
+ if(t.length){ICE={iceServers:STUN.concat(t)};if(t!==TURN)setTimeout(()=>{ICE=null},3600000)}}
+function mkPeer(id){const o={debug:0};if(ICE)o.config=ICE;const p=id?new Peer(id,o):new Peer(o);
  /* Losing the broker only stops new joins; reconnect so existing games keep accepting people */
  p.on('disconnected',()=>setTimeout(()=>{if(NET.peer===p&&!p.destroyed&&p.disconnected)try{p.reconnect()}catch(e){}},1500));return p}
-const errText=e=>{const t=e&&e.type||'';return t==='peer-unavailable'?'No game was found with that code.':t==='browser-incompatible'?'This browser cannot make peer-to-peer connections.':/network|server-error|socket/.test(t)?'Could not reach the connection server. Check your internet connection.':'Connection problem'+(t?' ('+t+')':'')+'.'};
+const errText=e=>{const t=e&&e.type||'';return t==='peer-unavailable'?'No game was found with that code.':t==='browser-incompatible'?'This browser cannot make peer-to-peer connections.':/negotiation|webrtc/.test(t)?'Your networks could not connect to each other. A relay server is needed (see How to Play Together Online).':/network|server-error|socket/.test(t)?'Could not reach the connection server. Check your internet connection.':'Connection problem'+(t?' ('+t+')':'')+'.'};
 
 /* ---- Host ---- */
 async function host(){if(NET.role)return;const run=++NET.run;NET.role='host';NET.stage='opening';render();
@@ -1793,7 +1831,8 @@ async function host(){if(NET.role)return;const run=++NET.run;NET.role='host';NET
  const prev=SS.get().h,again=!!(prev&&prev.code);NET.back=again&&prev.back&&typeof prev.back==='object'?prev.back:{};
  const open=tries=>{const same=again&&tries<5,code=same?prev.code:Array.from({length:6},()=>ABC[Math.floor(Math.random()*ABC.length)]).join(''),p=mkPeer(PFX+code);NET.peer=p;
   p.on('open',id=>{if(NET.peer!==p||NET.stage!=='opening')return;NET.code=code;NET.myId=id;NET.stage='in';sentPres='';
-   const s=SS.get();s.h={code,back:same?NET.back:(NET.back={})};SS.set(s);rosterChanged();say(same?'Hosting again with the code '+code+'.':'You are hosting. Share the code '+code+'.')});
+   const s=SS.get();NET.since=same&&prev.since||Date.now();s.h={code,back:same?NET.back:(NET.back={}),since:NET.since};SS.set(s);rosterChanged();
+   logAdd({k:'sys',m:(same?'You are hosting game ':'You started hosting game ')+code+'.'});say(same?'Hosting again with the code '+code+'.':'You are hosting. Share the code '+code+'.')});
   p.on('connection',hostConn);
   p.on('error',e=>{if(NET.peer!==p)return;if(NET.stage!=='opening')return console.warn('Multiplayer:',e);
    if(e.type==='unavailable-id'&&tries<8){p.destroy();setTimeout(()=>{if(NET.run===run)open(tries+1)},same?1500:0)}else end(errText(e),1)});
@@ -1814,7 +1853,7 @@ function hostConn(conn){if(NET.role!=='host'||NET.stage!=='in')return conn.close
    else if(NET.ask){send(conn,{t:'wait'});say(g.info.name+' wants to join. Open Session to let them in.');render()}else admit(conn.peer);return}
   if(!g.ok)return;
   if(d.t==='part')part(g.parts,d,on);
-  else if(REL.includes(d.t)){const m=relMsg(d,conn.peer);if(m){onRel(m);broadcast(m,conn.peer)}}
+  else if(REL.includes(d.t)){if((d.t==='chat'||d.t==='log')&&!chatOk(g))return;const m=relMsg(d,conn.peer);if(m){onRel(m);broadcast(m,conn.peer)}}
   else if(d.t==='cur'){const m={t:'cur',id:conn.peer,x:num(d.x),y:num(d.y),c:clean(d.c,16),n:clean(d.n,60)};showCur(m);broadcast(m,conn.peer)}
   else if(d.t==='pres'){Object.assign(g.info,{name:clean(d.name,24)||g.info.name,color:okCol(d.color),c:clean(d.c,16),n:clean(d.n,60)});rosterChanged()}
   else if(d.t==='resync')nope(g,'');
@@ -1823,13 +1862,17 @@ function hostConn(conn){if(NET.role!=='host'||NET.stage!=='in')return conn.close
  };
  conn.on('data',on);conn.on('close',()=>drop(conn.peer,g));conn.on('error',e=>console.warn('Multiplayer:',e));
 }
+/* At most 10 chat messages and results every 5 seconds from each guest */
+function chatOk(g){const now=Date.now();g.rt=(g.rt||[]).filter(t=>now-t<5000);if(g.rt.length>=10)return false;g.rt.push(now);return true}
 function admit(id,back){const g=NET.guests.get(id);if(!g||g.ok)return;
  /* New guests get the default role, and are linked to a player card with the same name if there is one */
  if(back){g.role=ROLES[back.role]?back.role:'spectator';g.perm={...PRESETS.spectator,...back.perm};g.player=back.player||''}
  else{g.role=NET.defRole;g.perm={...PRESETS[g.role]};const pl=S.players.find(p=>(p.name||'').trim().toLowerCase()===g.info.name.toLowerCase());g.player=pl?pl.id:''}
  g.info.role=ROLES[g.role];
- flush();g.ok=true;send(g.conn,{t:'welcome',back:!!back});sentPtr='';sentView='';rosterChanged();
- if(!SYNC.last)SYNC.last=shared();sendBig(g.conn,{t:'snap',s:SYNC.seq,d:SYNC.last});sendPerm(g,true);say(g.info.name+(back?' is back.':' joined the game.'))}
+ flush();g.ok=true;send(g.conn,{t:'welcome',back:!!back,fol:NET.hfol});sentPtr='';sentView='';rosterChanged();
+ if(!SYNC.last)SYNC.last=shared();sendBig(g.conn,{t:'snap',s:SYNC.seq,d:SYNC.last});sendPerm(g,true);
+ /* The log of this game so far, so people arriving late can read back */
+ sendBig(g.conn,{t:'loghist',l:LOG.filter(e=>e.k!=='sys'&&e.ts>=NET.since).slice(-100)});say(g.info.name+(back?' is back.':' joined the game.'))}
 function remember(g){if(!g.tok)return;NET.back[g.tok]={role:g.role,perm:g.perm,player:g.player};const s=SS.get();if(s.h){s.h.back=NET.back;SS.set(s)}}
 function sendPerm(g,quiet){const p=S.players.find(x=>x.id===g.player);g.info.role=ROLES[g.role];remember(g);
  send(g.conn,{t:'perm',role:g.role,perm:g.perm,player:g.player||'',pname:p?p.name||'Player':'',quiet:!!quiet});rosterChanged()}
@@ -1871,8 +1914,10 @@ function lost(msg,ms){NET.why=msg||'Lost the connection to the host. Reconnectin
 function guestData(d){if(!d||typeof d!=='object')return;
  if(d.t==='part')part(PARTS,d,guestData);
  else if(d.t==='wait'){NET.stage='waiting';NET.retry=0;render()}
- else if(d.t==='welcome'){const re=NET.stage==='retry';NET.stage='in';NET.retry=0;sentPres='';sentPtr='';sentView='';
-  say(re?'Reconnected.':d.back?'You rejoined game '+NET.code+'.':'You joined game '+NET.code+'.');render()}
+ else if(d.t==='welcome'){const re=NET.stage==='retry';NET.stage='in';seen=null;NET.retry=0;sentPres='';sentPtr='';sentView='';
+  /* New arrivals start with the host's choice; a reconnect keeps whatever this guest picked */
+  if(!re&&typeof d.fol==='boolean'){NET.follow=d.fol;SYNC.followed=''}
+  say(re?'Reconnected.':d.back?'You rejoined game '+NET.code+'.':'You joined game '+NET.code+'.');if(!re)logAdd({k:'sys',m:(d.back?'You rejoined game ':'You joined game ')+NET.code+'.'});render()}
  else if(d.t==='deny'){forget('g');end('The host did not let you in.',1)}
  else if(d.t==='kick'){forget('g');end('The host removed you from the game.',1)}
  else if(d.t==='full')end('That game is full.',1);
@@ -1888,11 +1933,14 @@ function guestData(d){if(!d||typeof d!=='object')return;
  else if(d.t==='nope'&&d.why)say(clean(d.why,160),1);
  else if(REL.includes(d.t)&&typeof d.by==='string'){const m=relMsg(d,clean(d.by,80));if(m)onRel(m)}
  else if(d.t==='summon')summoned(d);
+ else if(d.t==='loghist')logHist(d.l);
+ else if(d.t==='hfol'){NET.follow=!!d.on;SYNC.followed='';if(NET.follow)followHost();
+  say(NET.follow?'The host asked everyone to follow their table.':'The host turned off table following. You can move between tables freely.');render()}
  else if(d.t==='imgd'&&typeof d.id==='string')gotImg(d.id,d.u);
 }
 
 /* ---- Either side ---- */
-function end(msg,bad){if(!NET.role)return;const p=NET.peer,c=NET.conn;
+function end(msg,bad){if(!NET.role)return;const p=NET.peer,c=NET.conn,was=NET.stage==='in'||NET.stage==='retry',hosting=NET.role==='host';
  if(NET.role==='host'&&NET.stage==='in')broadcast({t:'end'});
  if(NET.role==='guest')leaveGuest();
  clearTimeout(SYNC.timer);clearTimeout(SYNC.gt);Object.assign(SYNC,{seq:0,last:null,timer:0,gt:0,base:null,waiting:false,followed:''});
@@ -1900,7 +1948,7 @@ function end(msg,bad){if(!NET.role)return;const p=NET.peer,c=NET.conn;
  FOLLOW='';dropRel();VIEWS.clear();
  /* Give the goodbye message a moment to go out before closing */
  setTimeout(()=>{try{c&&c.close()}catch(e){}try{p&&p.destroy()}catch(e){}},250);
- peersChanged();if(msg)say(msg,bad)}
+ peersChanged();if(msg)say(msg,bad);if(was)logAdd({k:'sys',m:msg||(hosting?'You ended the session.':'You left the game.')})}
 /* Closing or reloading the page doesn't end the game: guests wait a while in case the host comes back with the same code */
 window.addEventListener('beforeunload',()=>{if(NET.role==='host'&&NET.stage==='in')broadcast({t:'away'})});
 function copyCode(){const code=NET.code,ok=()=>say('Copied the code '+code+'.'),no=()=>say('The game code is '+code+'.');
@@ -1946,7 +1994,12 @@ function frame(){raf=0;if(!CUR.size&&!DRAG.size&&!PINGS.length)return;const c=cv
  loop()}
 
 /* ---- Presence: avatars in the top bar, and the Session menu ---- */
-function peersChanged(){if(FOLLOW&&!NET.roster.some(p=>p.id===FOLLOW))FOLLOW='';CUR.forEach((k,id)=>{if(!NET.roster.some(p=>p.id===id)){k.el.remove();CUR.delete(id)}else paintCur(k,id)});renderPeers();render()}
+/* "Sam joined." and "Sam left." in the log; the first list after joining is just who is already here */
+let seen=null;
+function noteJoins(){const now=new Map(NET.roster.map(p=>[p.id,p.name]));
+ if(seen&&NET.stage==='in'&&now.has(NET.myId)){now.forEach((n,id)=>{if(!seen.has(id))logAdd({k:'sys',m:n+' joined.'})});seen.forEach((n,id)=>{if(!now.has(id))logAdd({k:'sys',m:n+' left.'})})}
+ seen=NET.stage==='in'&&now.size?now:null}
+function peersChanged(){noteJoins();if(FOLLOW&&!NET.roster.some(p=>p.id===FOLLOW))FOLLOW='';CUR.forEach((k,id)=>{if(!NET.roster.some(p=>p.id===id)){k.el.remove();CUR.delete(id)}else paintCur(k,id)});renderPeers();render()}
 function renderPeers(){const box=$('#peers');box.innerHTML='';if(NET.stage!=='in')return;
  const cb=document.createElement('button');cb.id='ncode';cb.textContent=NET.code;cb.title='Game code (click to copy)';cb.onclick=copyCode;box.appendChild(cb);
  NET.roster.forEach(p=>{if(p.id===NET.myId)return;const d=document.createElement('button');d.className='pchip'+(p.host?' h':'')+(FOLLOW===p.id?' fol':'');d.style.background=p.color;d.style.color=ink(p.color);
@@ -1954,7 +2007,7 @@ function renderPeers(){const box=$('#peers');box.innerHTML='';if(NET.stage!=='in
   d.title=p.name+(p.host?' (host)':p.role?' ('+p.role+')':'')+(p.n?' · '+p.n:'')+(FOLLOW===p.id?' · Following. Click to stop.':' · Click to follow their view.');
   d.onclick=()=>follow(FOLLOW===p.id?'':p.id);box.appendChild(d)})}
 const prow=(p,act)=>`<div class="sp"><span class="pchip" style="background:${okCol(p.color)};color:${ink(okCol(p.color))}">${esc(p.name.slice(0,2))}</span><span class="spn"><b>${esc(p.name)}</b>${p.n?'<br><span class="mute">'+esc(p.n)+'</span>':''}</span>${act}</div>`;
-function render(){const hosting=NET.role==='host',pend=[...NET.guests.values()].filter(g=>!g.ok);
+function render(){$('#chatf').hidden=NET.stage!=='in';const hosting=NET.role==='host',pend=[...NET.guests.values()].filter(g=>!g.ok);
  rb.innerHTML='Session'+(pend.length?'<b class="rbadge" aria-label="'+pend.length+' waiting">'+pend.length+'</b>':'');
  const ask=`<label class="chk"><input type="checkbox" data-a="ask"${NET.ask?' checked':''}> Ask me before letting people in</label>`;
  let h;
@@ -1966,7 +2019,8 @@ function render(){const hosting=NET.role==='host',pend=[...NET.guests.values()].
   if(hosting&&pend.length)h+='<h4>Waiting room</h4>'+pend.map(g=>prow(g.info,`<button data-a="admit" data-id="${esc(g.info.id)}">Let in</button><button data-a="deny" data-id="${esc(g.info.id)}">Deny</button>`)).join('');
   h+=`<h4>People (${NET.roster.length})</h4>`+NET.roster.map(p=>{const g=hosting&&NET.guests.get(p.id);
    return prow(p,p.id===NET.myId?'<span class="mute">you</span>':g?`<button data-a="kick" data-id="${esc(p.id)}">Remove</button>`:p.host?'<span class="mute">host</span>':p.role?'<span class="mute">'+esc(p.role)+'</span>':'')+(g?permCtl(g):'')}).join('');
-  if(hosting)h+=ask+`<label>New guests join as<select data-a="defrole">${opts([['spectator',ROLES.spectator],['player',ROLES.player],['cogm',ROLES.cogm]],NET.defRole)}</select></label>`;
+  if(hosting)h+=ask+`<label>New guests join as<select data-a="defrole">${opts([['spectator',ROLES.spectator],['player',ROLES.player],['cogm',ROLES.cogm]],NET.defRole)}</select></label>`+
+   `<label class="chk"><input type="checkbox" data-a="hfol"${NET.hfol?' checked':''}> Guests follow my table</label>`;
   else h+=`<p>Your role: <b>${esc(ROLES[MYROLE])}</b>${MYPN?', playing as <b>'+esc(MYPN)+'</b>':''}.</p><p class="mute">${esc(canText())}</p><label class="chk"><input type="checkbox" data-a="follow"${NET.follow?' checked':''}> Follow the host’s table</label>`;
   h+=`<div class="row"><button data-a="end">${hosting?'End session':'Leave game'}</button></div>`}
  /* Skip redraws that change nothing, so a button being clicked isn't swapped out underneath the mouse */
@@ -1978,7 +2032,7 @@ sx.addEventListener('click',e=>{const b=e.target.closest('button[data-a]');if(!b
  else if(a==='end'){forget(NET.role==='host'?'h':'g');end(NET.role==='host'&&NET.stage==='in'?'You ended the session.':NET.stage==='in'?'You left the game.':'')}
  else if(a==='admit')admit(id);else if(a==='deny')remove(id,'deny');else if(a==='kick')remove(id,'kick')});
 sx.addEventListener('change',e=>{const el=e.target,a=el.dataset.a;
- if(a==='ask')NET.ask=el.checked;else if(a==='follow'){NET.follow=el.checked;SYNC.followed='';followHost()}
+ if(a==='ask')NET.ask=el.checked;else if(a==='hfol'){NET.hfol=el.checked;saveProfile();broadcast({t:'hfol',on:NET.hfol})}else if(a==='follow'){NET.follow=el.checked;SYNC.followed='';followHost()}
  else if(a==='defrole'&&PRESETS[el.value])NET.defRole=el.value;
  else if(a==='role'||a==='as'||a==='pm'){const g=NET.guests.get(el.dataset.id);if(!g||!g.ok)return;
   if(a==='role'&&ROLES[el.value]){g.role=el.value;if(PRESETS[g.role])g.perm={...PRESETS[g.role]}}
@@ -2006,18 +2060,24 @@ sx.addEventListener('keydown',e=>{if(e.target.id==='scode'&&e.key==='Enter')join
    Guests to host: after each save() a guest sends what it changed. The host checks it against that guest's
    permissions and applies all of it or none of it. When it says no, the guest gets the host's copy back.
    Each person's pan, zoom and current table stay their own, and so do the music player and piano. */
-const SYNC={seq:0,last:null,timer:0,gt:0,base:null,waiting:false,followed:''},LOCALTOOLS=['music','piano'],MAXOPS=300;
+const SYNC={seq:0,last:null,timer:0,gt:0,base:null,waiting:false,followed:''},LOCALTOOLS=['music','piano','notes'],MAXOPS=300;
 const BAD=new Set(['__proto__','prototype','constructor']),TOPS=['canvases','players','items','imgs','tools'];
 const PRESETS={spectator:{pieces:'none',stats:'none',play:false,build:false},player:{pieces:'own',stats:'own',play:true,build:false},cogm:{pieces:'any',stats:'any',play:true,build:true}};
 const ROLES={spectator:'Spectator',player:'Player',cogm:'Co-GM',custom:'Custom'};
 NET.defRole='player';
 let PERM={...PRESETS.spectator},MYROLE='spectator',MYP='',MYPN='';
 window.twNet={guest:false,
- saved(){if(NET.stage!=='in')return;if(NET.role==='host'){if(!SYNC.timer)SYNC.timer=setTimeout(flush,80)}else if(OWN&&!SYNC.gt)SYNC.gt=setTimeout(gFlush,60)},
+ saved(){
+  /* A guest's own notepad, music player and piano are still saved to their own tables while in someone's game */
+  if(OWN&&!SYNC.lt)SYNC.lt=setTimeout(()=>{SYNC.lt=0;if(!OWN)return;keepLocal(OWN);try{localStorage.setItem('tw1',JSON.stringify(OWN))}catch(e){}},500);
+  if(NET.stage!=='in')return;if(NET.role==='host'){if(!SYNC.timer)SYNC.timer=setTimeout(flush,80)}else if(OWN&&!SYNC.gt)SYNC.gt=setTimeout(gFlush,60)},
  /* Things this guest may not move behave like locked tiles: dragging them pans the table instead */
  locked(it){const d=DRAG.get(it.id);if(d&&d.by!==NET.myId&&performance.now()-d.t<3000)return true;
   if(!OWN)return false;return it.type==='piece'?!pieceOk(PERM,MYP,it.pid):it.type==='item'?!tokOk(PERM):!PERM.build},
- logged(m){if(NET.stage==='in')sendRel({t:'log',m:clean(m,200)})}};
+ /* Results and chat carry your name while you are in a game */
+ who(){return NET.stage==='in'?{who:myName(),col:okCol($('#scol').value),id:NET.myId+'.'+uid()+uid()}:{}},
+ logged(e){if(NET.stage==='in')sendRel({t:'log',id:e.id,m:clean(e.m,200)})},
+ chat(text){const m=clean(text,300);if(!m||NET.stage!=='in')return false;const e=logAdd({k:'chat',m,...twNet.who()});if(e)sendRel({t:'chat',id:e.id,m});return true}};
 function shared(){const t={};Object.keys(S.tools||{}).forEach(k=>{if(!LOCALTOOLS.includes(k))t[k]=S.tools[k]});
  return JSON.parse(JSON.stringify({canvases:S.canvases.map(c=>({id:c.id,name:c.name,items:c.items})),players:S.players.map(({invOpen,...p})=>p),items:S.items,imgs:S.imgs||[],tools:t}))}
 const idList=a=>{const s=new Set();return a.every(x=>x!==null&&typeof x==='object'&&typeof x.id==='string'&&x.id&&!s.has(x.id)&&s.add(x.id))};
@@ -2191,10 +2251,11 @@ function applyPerm(quiet){if(!OWN)return;const pm=PERM,sp=isSpect(pm),B=document
  B.classList.toggle('spect',sp);B.classList.toggle('g-nobuild',!pm.build);B.classList.toggle('g-noplay',!pm.play);
  const noTools=!pm.play&&!pm.build;
  document.querySelectorAll('#panel section').forEach(s=>{s.inert=s.id==='p-tiles'||s.id==='p-images'?!pm.build:s.id==='p-players'?sp:false});
- /* Tools, toys and games one by one, so the music player and piano (which are your own) always work */
+ /* Tools, toys and games one by one, so the music player, piano and notepad (which are your own) always work */
  document.querySelectorAll('#p-tools details,#p-toys details,#p-games details').forEach(d=>{const t=d.querySelector('[data-tool]');d.inert=noTools&&!(t&&LOCALTOOLS.includes(t.dataset.tool))});
+ document.querySelectorAll('[data-show]').forEach(b=>{b.disabled=!pm.build});
  ['#addc','#renc','#delc'].forEach(q=>{$(q).disabled=!pm.build});$('#mode').disabled=sp;
- ['#imp','#impf','#ldt','#lda'].forEach(q=>{const b=$(q);if(b)b.disabled=true});
+ ['#imp','#impf','#pki','#ldt','#lda'].forEach(q=>{const b=$(q);if(b)b.disabled=true});
  if(!pm.build){const sb=document.querySelector('#tools2 [data-tl=select]');if(sb&&!sb.classList.contains('on'))sb.click()}
  if(sp)sel=null;
  if(!quiet){renderNav();renderPlayers();renderWorld()}render()}
@@ -2212,10 +2273,12 @@ function canText(){const pm=PERM;if(isSpect(pm))return 'You can watch, pan and z
  if(pm.play)L.push('use tools, toys and games');
  const own=(pm.pieces==='own'||pm.stats==='own')&&!MYP?' The host hasn’t given you a player card yet.':'';
  return 'You can '+L.join(', ').replace(/, ([^,]*)$/,' and $1')+'.'+own}
+function keepLocal(own){if(!own.tools||typeof own.tools!=='object'||Array.isArray(own.tools))own.tools={};LOCALTOOLS.forEach(k=>{if(S.tools&&S.tools[k])own.tools[k]=S.tools[k]})}
 function leaveGuest(){if(!OWN)return;const own=OWN;OWN=null;twNet.guest=false;PERM={...PRESETS.spectator};MYROLE='spectator';MYP=MYPN='';
  ['guest','spect','g-nobuild','g-noplay'].forEach(c=>document.body.classList.remove(c));
  document.querySelectorAll('#panel section,#panel details').forEach(s=>{s.inert=false});
- ['#mode','#addc','#renc','#delc','#imp','#impf','#ldt','#lda','#addp','#inm','#ids','#iimg','#iaddm','#iadd'].forEach(q=>{const b=$(q);if(b)b.disabled=false});
+ ['#mode','#addc','#renc','#delc','#imp','#impf','#pki','#ldt','#lda','#addp','#inm','#ids','#iimg','#iaddm','#iadd'].forEach(q=>{const b=$(q);if(b)b.disabled=false});
+ document.querySelectorAll('[data-show]').forEach(b=>{b.disabled=false});keepLocal(own);
  IMG.got.forEach(id=>{const u=IC.get(id);if(u)URL.revokeObjectURL(u);IC.delete(id)});IMG.got.clear();IMG.asked.clear();PARTS.clear();PEND.clear();PKINDS.clear();
  Object.keys(S).forEach(k=>delete S[k]);Object.assign(S,own);rebuildAll()}
 const hostTable=()=>{const h=NET.roster.find(p=>p.host);return h&&h.c||''};
@@ -2264,7 +2327,7 @@ function redrawImgs(){clearTimeout(IMG.timer);IMG.timer=setTimeout(()=>{if(!OWN)
 /* ---- Live extras: drags in motion, shared results, pings, following someone, bringing everyone together ----
    These are passed along as they happen and never stored. The host relays each one to everyone else,
    stamped with who sent it (by). */
-const REL=['drag','log','ping','view'],DRAG=new Map(),VIEWS=new Map(),PINGS=[];
+const REL=['drag','log','chat','ping','view'],DRAG=new Map(),VIEWS=new Map(),PINGS=[];
 let FOLLOW='',myDrag=null,sentDrag='';
 const colorOf=id=>{const p=NET.roster.find(x=>x.id===id);return p?p.color:'#e3b14b'};
 const nameOf=id=>{const p=NET.roster.find(x=>x.id===id);return p?p.name:'Someone'};
@@ -2275,13 +2338,17 @@ function relMsg(d,by){const c=clean(d.c,16);
   const x=num(d.x),y=num(d.y),w=num(d.w),h=num(d.h);return [x,y,w,h].includes(null)?null:{t:'drag',by,id,c,x,y,w:Math.max(10,w),h:Math.max(10,h)}}
  if(d.t==='ping'){const x=num(d.x),y=num(d.y);return x===null||y===null?null:{t:'ping',by,c,x,y}}
  if(d.t==='view'){const x=num(d.x),y=num(d.y),z=num(d.z),w=num(d.w),h=num(d.h);return [x,y,z,w,h].includes(null)?null:{t:'view',by,c,x,y,z:Math.min(3,Math.max(.25,z)),w,h}}
- if(d.t==='log'){const m=clean(d.m,200);return m?{t:'log',by,m}:null}
+ if(d.t==='log'||d.t==='chat'){const m=clean(d.m,d.t==='log'?200:300);let id=clean(d.id,130);if(!id.startsWith(by+'.'))id=by+'.'+id;return m?{t:d.t,by,id,m}:null}
  return null}
 function onRel(m){
  if(m.t==='drag'){if(m.end){const d=DRAG.get(m.id);if(d&&d.by===m.by){DRAG.delete(m.id);settle(m.id)}}else{DRAG.set(m.id,{...m,t:performance.now()});loop()}}
  else if(m.t==='ping')showPing(m);
  else if(m.t==='view'){VIEWS.set(m.by,m);if(FOLLOW===m.by)applyFollow()}
- else if(m.t==='log')showLog(nameOf(m.by)+': '+m.m)}
+ else if(m.t==='log'||m.t==='chat')logAdd({id:m.id,k:m.t==='log'?'res':'chat',m:m.m,who:nameOf(m.by),col:colorOf(m.by)})}
+/* History from the host. Ids start with the sender's id, so the same entry is never shown twice. */
+function logHist(l){if(!Array.isArray(l))return;const now=Date.now();
+ l.slice(-100).forEach(e=>{if(!e||typeof e!=='object'||!['res','chat'].includes(e.k))return;const m=clean(e.m,300);if(!m)return;
+  const ts=num(e.ts);logAdd({id:clean(e.id,130),k:e.k,m,who:clean(e.who,24),col:e.col?okCol(e.col):'',ts:ts===null?now:Math.min(now,ts)})})}
 /* After a drag ends the real position arrives with the next update. If it never does (the move wasn't allowed), put the item back. */
 function settle(id){setTimeout(()=>{if(DRAG.has(id))return;const e=el(id),it=item(id);if(!e)return;e.classList.remove('rdrag');
  if(it){e.style.left=it.x+'px';e.style.top=it.y+'px';e.style.width=it.w+'px';e.style.height=it.h+'px'}},1200)}
